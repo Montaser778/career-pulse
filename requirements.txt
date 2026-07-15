@@ -1,0 +1,10 @@
+streamlit
+groq
+langchain-groq
+langgraph
+langchain
+requests
+beautifulsoup4
+python-docx
+pdfplumber
+typing_extensions
