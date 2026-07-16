@@ -91,7 +91,6 @@ workflow.add_edge("tools", "agent")
 app = workflow.compile()
 
 # --- UI Content ---
-
 st.markdown("<h1 class='title-style' style='text-align:center;'>🚀 CareerPulse AI Pro</h1>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle-style' style='text-align:center;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
 
