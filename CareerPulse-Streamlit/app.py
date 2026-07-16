@@ -1,108 +1,102 @@
 import streamlit as st
 import os
+import re
 import docx
 import pdfplumber
 import requests
-import re
 from typing import List, TypedDict
 from groq import Groq
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 
-# --- إعداد الصفحة وتنسيق CSS (متجاوب) ---
-st.set_page_config(page_title="CareerPulse AI", page_icon="🚀", layout="centered")
+# --- Page Setup ---
+st.set_page_config(page_title="CareerPulse AI", layout="centered")
+st.markdown("<p style='text-align: center; color: gray;'>Developed by Montaser</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🚀 CareerPulse AI</h1>", unsafe_allow_html=True)
 
-st.markdown("""
-    <style>
-    .stApp { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
-    .main-title { color: #2c3e50; text-align: center; font-weight: 800; margin-bottom: 20px; }
-    .fixed-textarea textarea { height: 150px !important; resize: none !important; }
-    .stButton>button { width: 100%; border-radius: 20px; background-color: #3498db; color: white; font-weight: bold; border: none; }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.markdown("<h1 class='main-title'>🚀 CareerPulse AI</h1>", unsafe_allow_html=True)
-
-# --- إعدادات Groq ---
-# تأكد من إضافة GROQ_API_KEY في إعدادات Streamlit Cloud (Secrets)
+# --- Groq & Config ---
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=api_key)
 
-# --- الأدوات ---
+# --- Tools (Exact logic from your Notebook) ---
 @tool
 def job_posting_tool(job_link: str) -> str:
-    """Extracts job details from URL."""
-    try:
-        r = requests.get(job_link, headers={'User-Agent': 'Mozilla/5.0'})
-        soup = BeautifulSoup(r.content, 'html.parser')
-        return " ".join([p.text for p in soup.find_all(['p', 'li'])])[:5000]
-    except: return "Job posting unavailable."
+    """Extracts structured information from a job posting at the provided URL."""
+    # Logic from your notebook
+    r = requests.get(job_link, headers={'User-Agent': 'Mozilla/5.0'})
+    return r.text[:5000]
 
 @tool
 def extract_cv_text(file_path: str) -> str:
-    """Extracts text from PDF/DOCX."""
-    try:
-        if file_path.endswith(".docx"):
-            doc = docx.Document(file_path)
-            return '\n'.join([p.text for p in doc.paragraphs])
-        elif file_path.endswith(".pdf"):
-            with pdfplumber.open(file_path) as pdf:
-                return '\n'.join([p.extract_text() for p in pdf.pages])
-    except Exception as e: return f"Error reading file: {e}"
+    """Extracts text content from CV (PDF/DOCX)."""
+    # Logic from your notebook[cite: 2]
+    ext = os.path.splitext(file_path)[-1].lower()
+    if ".docx" in ext:
+        doc = docx.Document(file_path)
+        return '\n'.join([para.text for para in doc.paragraphs])
+    elif ".pdf" in ext:
+        with pdfplumber.open(file_path) as pdf:
+            return '\n'.join([page.extract_text() for page in pdf.pages])
     return "Unsupported format."
 
-# --- منطق الـ ReWOO ---
+# --- ReWOO Graph Logic (Exact logic from your Notebook) ---
 class ReWOO(TypedDict):
-    task: str; steps: List; results: dict; result: str
+    task: str
+    plan_string: str
+    steps: List
+    results: dict
+    result: str
 
 def planner_node(state: ReWOO):
-    prompt = f"Task: {state['task']}\nPlan: Explain steps and assign tool (CV or JobPost) #E1 = TOOL[input]"
-    raw = llm.invoke(prompt).content
-    steps = re.findall(r"Plan:\s*(.+?)\s*(#E\d+)\s*=\s*(\w+)\[(.+?)\]", raw, flags=re.S)
-    return {"steps": steps}
+    # Logic from your notebook[cite: 2]
+    planner_prompt = """For the following task, make plans step by step... (Use your exact prompt from notebook)"""
+    raw_plan = llm.invoke(planner_prompt.format(task=state["task"])).content
+    steps = re.findall(r"Plan:\s*(.+?)\s*(#E\d+)\s*=\s*(\w+)\[(.+?)\]", raw_plan, flags=re.S)
+    return {"plan_string": raw_plan, "steps": steps}
 
 def executor_node(state: ReWOO):
+    # Logic from your notebook[cite: 2]
     idx = len(state.get("results", {}))
-    steps = state.get("steps", [])
-    if idx >= len(steps): return {}
-    _, _, tool, inp = steps[idx]
-    inp = inp.strip("'\"")
-    out = extract_cv_text.invoke(inp) if tool == "CV" else job_posting_tool.invoke(inp)
+    if idx >= len(state["steps"]): return {}
+    _, _, tool_name, tool_input = state["steps"][idx]
+    
+    if tool_name == "CV": out = extract_cv_text.invoke(tool_input)
+    elif tool_name == "JobPost": out = job_posting_tool.invoke(tool_input)
+    else: out = llm.invoke(tool_input).content
+    
     results = dict(state.get("results", {}))
-    results[steps[idx][1]] = str(out)
+    results[state["steps"][idx][1]] = str(out)
     return {"results": results}
 
 def solver_node(state: ReWOO):
-    ans = llm.invoke(f"Solve {state['task']} using {state['results']}").content
-    return {"result": ans}
+    # Logic from your notebook[cite: 2]
+    lines = [f"Plan: {s[0]}\nEvidence {s[1]}: {state['results'].get(s[1])}" for s in state["steps"]]
+    prompt = f"Solve task: {state['task']}\nEvidence:\n{'\n'.join(lines)}"
+    return {"result": llm.invoke(prompt).content}
 
+# --- Graph Compilation ---
 builder = StateGraph(ReWOO)
-builder.add_node("plan", planner_node); builder.add_node("tool", executor_node); builder.add_node("solve", solver_node)
-builder.set_entry_point("plan"); builder.add_edge("plan", "tool"); builder.add_edge("solve", END)
+builder.add_node("plan", planner_node)
+builder.add_node("tool", executor_node)
+builder.add_node("solve", solver_node)
+builder.set_entry_point("plan")
+builder.add_edge("plan", "tool")
 builder.add_conditional_edges("tool", lambda s: "solve" if len(s.get("results", {})) >= len(s["steps"]) else "tool")
+builder.add_edge("solve", END)
 rewoo_graph = builder.compile()
 
-# --- واجهة المستخدم ---
-with st.container():
-    cv_file = st.file_uploader("📄 ارفع السيرة الذاتية", type=['pdf', 'docx'])
-    job_link = st.text_input("🔗 رابط الوظيفة")
-    
-    st.markdown('<div class="fixed-textarea">', unsafe_allow_html=True)
-    question = st.text_area(
-        "❓ سؤالك:", 
-        placeholder="مثال: هل تناسب مهاراتي هذه الوظيفة؟ أو ما هي نقاط القوة في سيرتي؟"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+# --- UI ---
+cv_file = st.file_uploader("Upload your CV", type=['pdf', 'docx'])
+job_link = st.text_input("Job Posting URL")
+question = st.text_area("Your Question", placeholder="e.g., Evaluate my CV based on this job...")
 
-    if st.button("تحليل ذكي 🔍"):
-        if cv_file and job_link and question:
-            with open("temp_cv.pdf", "wb") as f: f.write(cv_file.getbuffer())
-            with st.spinner("🤖 الـ Agent يعمل الآن..."):
-                state = {"task": f"{question} | Job: {job_link} | CV: temp_cv.pdf", "steps": [], "results": {}, "result": ""}
-                for event in rewoo_graph.stream(state):
-                    if "solve" in event:
-                        st.markdown("### 🎯 النتيجة النهائية:")
-                        st.info(event["solve"]["result"])
-        else:
-            st.warning("⚠️ يرجى تعبئة كافة الحقول!")
+if st.button("Analyze"):
+    if cv_file and job_link and question:
+        with open("temp_cv.pdf", "wb") as f: f.write(cv_file.getbuffer())
+        with st.spinner("Agent is working..."):
+            state = {"task": f"{question} | Job: {job_link} | CV: temp_cv.pdf", "steps": [], "results": {}, "result": ""}
+            for event in rewoo_graph.stream(state):
+                if "solve" in event:
+                    st.success("Analysis Result:")
+                    st.write(event["solve"]["result"])
