@@ -16,7 +16,7 @@ from langchain_core.messages import HumanMessage
 st.set_page_config(page_title="CareerPulse AI", layout="centered")
 st.markdown("""
     <style>
-    .block-container { padding-top: 2rem; }
+    .block-container { padding-top: 1rem; }
     .stApp { background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab); background-size: 400% 400%; animation: gradient 15s ease infinite; }
     @keyframes gradient { 0% {background-position: 0% 50%;} 50% {background-position: 100% 50%;} 100% {background-position: 0% 50%;} }
     .main-box { background-color: rgba(255,255,255,0.95); padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
@@ -64,7 +64,7 @@ workflow.add_edge("tools", "agent")
 app = workflow.compile()
 
 # --- UI Content ---
-دst.markdown("<h2 style='text-align:center;'>🚀 CareerPulse AI</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align:center;'>CareerPulse AI</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center; color:#555;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
 
 cv_file = st.file_uploader("Upload your CV", type=['pdf', 'docx'])
@@ -75,9 +75,8 @@ if st.button("Analyze"):
     if cv_file and job_link and question:
         save_path = "temp_cv.pdf"
         with open(save_path, "wb") as f: f.write(cv_file.getbuffer())
-        
         with st.spinner("Agent is working..."):
-            initial_state = {"messages": [HumanMessage(content=f"CV file is at {save_path}. Job link is {job_link}. Task: {question}")]}
+            initial_state = {"messages": [HumanMessage(content=f"CV at {save_path}. Job at {job_link}. Task: {question}")]}
             final_state = app.invoke(initial_state)
             st.write("### Analysis Result:")
             st.write(final_state["messages"][-1].content)
