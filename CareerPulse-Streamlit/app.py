@@ -75,7 +75,6 @@ workflow.add_edge("tools", "agent")
 app = workflow.compile()
 
 # --- UI Content ---
-st.markdown("<div class='main-container'>", unsafe_allow_html=True)
 st.markdown("<h1 class='header-text'>Career Pulse AI Pro</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-text'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
 
