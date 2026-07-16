@@ -1,40 +1,25 @@
 import streamlit as st
 import os
-import re
 import docx
 import pdfplumber
 import requests
-from typing import List, TypedDict, Annotated
+from typing import List, Annotated
 import operator
 from groq import Groq
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
-from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, AIMessage
+from langgraph.graph import StateGraph, END, MessagesState
+from langgraph.prebuilt import ToolNode
+from langchain_core.messages import HumanMessage
 
 # --- Page Setup & CSS ---
 st.set_page_config(page_title="CareerPulse AI", layout="centered")
-
 st.markdown("""
     <style>
-    /* إزالة الفراغ العلوي الافتراضي */
     .block-container { padding-top: 2rem; }
-    
-    /* خلفية متحركة */
-    .stApp {
-        background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-        background-size: 400% 400%;
-        animation: gradient 15s ease infinite;
-    }
-    @keyframes gradient {
-        0% {background-position: 0% 50%;}
-        50% {background-position: 100% 50%;}
-        100% {background-position: 0% 50%;}
-    }
-    
+    .stApp { background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab); background-size: 400% 400%; animation: gradient 15s ease infinite; }
+    @keyframes gradient { 0% {background-position: 0% 50%;} 50% {background-position: 100% 50%;} 100% {background-position: 0% 50%;} }
     .main-box { background-color: rgba(255,255,255,0.95); padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-    .title-style { margin-bottom: 0; padding-bottom: 0; }
-    .subtitle-style { color: #555; margin-top: 0; margin-bottom: 20px; font-weight: 300; }
     .stButton>button { width: 100%; border-radius: 10px; background-color: #2c3e50; color: white; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
@@ -67,32 +52,20 @@ tools = [job_posting_tool, extract_cv_text]
 llm_with_tools = llm.bind_tools(tools)
 
 # --- Graph Workflow ---
-class AgentState(TypedDict):
-    messages: Annotated[List, operator.add]
+def agent(state: MessagesState):
+    return {"messages": [llm_with_tools.invoke(state["messages"])]}
 
-def agent_node(state: AgentState):
-    msg = llm_with_tools.invoke(state["messages"])
-    return {"messages": [msg]}
-
-def tool_node(state: AgentState):
-    last_msg = state["messages"][-1]
-    results = []
-    for tool_call in last_msg.tool_calls:
-        res = extract_cv_text.invoke(tool_call["args"]["file_path"]) if tool_call["name"] == "extract_cv_text" else job_posting_tool.invoke(tool_call["args"]["job_link"])
-        results.append(res)
-    return {"messages": [AIMessage(content=str(results))]}
-
-workflow = StateGraph(AgentState)
-workflow.add_node("agent", agent_node)
-workflow.add_node("tools", tool_node)
+workflow = StateGraph(MessagesState)
+workflow.add_node("agent", agent)
+workflow.add_node("tools", ToolNode(tools))
 workflow.set_entry_point("agent")
 workflow.add_conditional_edges("agent", lambda s: "tools" if s["messages"][-1].tool_calls else END)
 workflow.add_edge("tools", "agent")
 app = workflow.compile()
 
 # --- UI Content ---
-st.markdown("<h1 class='title-style' style='text-align:center;'>🚀 CareerPulse AI Pro</h1>", unsafe_allow_html=True)
-st.markdown("<p class='subtitle-style' style='text-align:center;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
+دst.markdown("<h2 style='text-align:center;'>🚀 CareerPulse AI</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color:#555;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
 
 cv_file = st.file_uploader("Upload your CV", type=['pdf', 'docx'])
 job_link = st.text_input("Job Posting URL")
@@ -100,9 +73,11 @@ question = st.text_area("Your Question", placeholder="Evaluate my CV against thi
 
 if st.button("Analyze"):
     if cv_file and job_link and question:
-        with open("temp_cv.pdf", "wb") as f: f.write(cv_file.getbuffer())
-        with st.spinner("Agent is analyzing..."):
-            initial_state = {"messages": [HumanMessage(content=f"CV at temp_cv.pdf. Job at {job_link}. Task: {question}")]}
+        save_path = "temp_cv.pdf"
+        with open(save_path, "wb") as f: f.write(cv_file.getbuffer())
+        
+        with st.spinner("Agent is working..."):
+            initial_state = {"messages": [HumanMessage(content=f"CV file is at {save_path}. Job link is {job_link}. Task: {question}")]}
             final_state = app.invoke(initial_state)
             st.write("### Analysis Result:")
             st.write(final_state["messages"][-1].content)
