@@ -12,10 +12,14 @@ from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, AIMessage
 
-# --- UI & Styling ---
+# --- Page Setup & CSS ---
 st.set_page_config(page_title="CareerPulse AI", layout="centered")
+
 st.markdown("""
     <style>
+    /* إزالة الفراغ العلوي الافتراضي */
+    .block-container { padding-top: 2rem; }
+    
     /* خلفية متحركة */
     .stApp {
         background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
@@ -27,8 +31,11 @@ st.markdown("""
         50% {background-position: 100% 50%;}
         100% {background-position: 0% 50%;}
     }
-    .main-box { background-color: rgba(255,255,255,0.9); padding: 30px; border-radius: 20px; }
-    .fixed-textarea textarea { height: 150px !important; resize: none !important; }
+    
+    .main-box { background-color: rgba(255,255,255,0.95); padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+    .title-style { margin-bottom: 0; padding-bottom: 0; }
+    .subtitle-style { color: #555; margin-top: 0; margin-bottom: 20px; font-weight: 300; }
+    .stButton>button { width: 100%; border-radius: 10px; background-color: #2c3e50; color: white; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -53,17 +60,16 @@ def extract_cv_text(file_path: str) -> str:
         elif file_path.endswith(".pdf"):
             with pdfplumber.open(file_path) as pdf:
                 return '\n'.join([p.extract_text() for p in pdf.pages])
-    except: return "Error reading CV file."
+    except: return "Error reading CV."
     return "Unsupported format."
 
 tools = [job_posting_tool, extract_cv_text]
 llm_with_tools = llm.bind_tools(tools)
 
-# --- State ---
+# --- Graph Workflow ---
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
 
-# --- Workflow ---
 def agent_node(state: AgentState):
     msg = llm_with_tools.invoke(state["messages"])
     return {"messages": [msg]}
@@ -72,14 +78,10 @@ def tool_node(state: AgentState):
     last_msg = state["messages"][-1]
     results = []
     for tool_call in last_msg.tool_calls:
-        tool_name = tool_call["name"]
-        tool_inp = tool_call["args"]
-        if tool_name == "extract_cv_text": res = extract_cv_text.invoke(tool_inp["file_path"])
-        else: res = job_posting_tool.invoke(tool_inp["job_link"])
+        res = extract_cv_text.invoke(tool_call["args"]["file_path"]) if tool_call["name"] == "extract_cv_text" else job_posting_tool.invoke(tool_call["args"]["job_link"])
         results.append(res)
     return {"messages": [AIMessage(content=str(results))]}
 
-# --- Graph ---
 workflow = StateGraph(AgentState)
 workflow.add_node("agent", agent_node)
 workflow.add_node("tools", tool_node)
@@ -89,21 +91,21 @@ workflow.add_edge("tools", "agent")
 app = workflow.compile()
 
 # --- UI Content ---
-st.markdown("<p style='text-align:center; color:white;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
 st.markdown("<div class='main-box'>", unsafe_allow_html=True)
-st.title("🚀 CareerPulse AI")
+st.markdown("<h1 class='title-style' style='text-align:center;'>🚀 CareerPulse AI Pro</h1>", unsafe_allow_html=True)
+st.markdown("<p class='subtitle-style' style='text-align:center;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
 
-cv_file = st.file_uploader("Upload CV", type=['pdf', 'docx'])
-job_link = st.text_input("Job URL")
-question = st.text_area("Your Question", placeholder="Evaluate my CV against this job...", key="fixed-textarea")
+cv_file = st.file_uploader("Upload your CV", type=['pdf', 'docx'])
+job_link = st.text_input("Job Posting URL")
+question = st.text_area("Your Question", placeholder="Evaluate my CV against this job...", height=150)
 
 if st.button("Analyze"):
     if cv_file and job_link and question:
         with open("temp_cv.pdf", "wb") as f: f.write(cv_file.getbuffer())
         with st.spinner("Agent is analyzing..."):
-            initial_state = {"messages": [HumanMessage(content=f"Use the CV at temp_cv.pdf and the job at {job_link} to answer: {question}")]}
+            initial_state = {"messages": [HumanMessage(content=f"CV at temp_cv.pdf. Job at {job_link}. Task: {question}")]}
             final_state = app.invoke(initial_state)
-            st.success("Result:")
+            st.write("### Analysis Result:")
             st.write(final_state["messages"][-1].content)
     else:
         st.warning("Please fill all fields.")
