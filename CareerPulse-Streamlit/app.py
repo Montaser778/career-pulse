@@ -64,8 +64,9 @@ workflow.add_edge("tools", "agent")
 app = workflow.compile()
 
 # --- UI Content ---
-st.markdown("<h2 style='text-align:center;'>CareerPulse AI</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center; color:#555;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
+st.markdown("<div class='main-box'>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align:left;'>CareerPulse AI</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:left; color:#555;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
 
 cv_file = st.file_uploader("Upload your CV", type=['pdf', 'docx'])
 job_link = st.text_input("Job Posting URL")
