@@ -49,11 +49,29 @@ def planner_node(state: ReWOO):
     return {"steps": re.findall(r"Plan:\s*(.+?)\s*(#E\d+)\s*=\s*(\w+)\[(.+?)\]", plan, flags=re.S)}
 
 def executor_node(state: ReWOO):
+    # إضافة صمام أمان: تحقق من وجود خطوات قبل التنفيذ
+    steps = state.get("steps", [])
+    if not steps:
+        return {"results": state.get("results", {})}
+        
     idx = len(state.get("results", {}))
-    _, _, tool, inp = state["steps"][idx]
-    out = extract_cv_text.invoke(inp) if tool == "CV" else job_posting_tool.invoke(inp)
+    
+    # تأكد أن الـ idx لا يتجاوز طول الخطوات
+    if idx >= len(steps):
+        return {"results": state.get("results", {})}
+        
+    _, _, tool, inp = steps[idx]
+    
+    # معالجة استخراج النص
+    if tool == "CV":
+        out = extract_cv_text.invoke(inp)
+    elif tool == "JobPost":
+        out = job_posting_tool.invoke(inp)
+    else:
+        out = llm.invoke(inp).content
+        
     results = dict(state.get("results", {}))
-    results[state["steps"][idx][1]] = str(out)
+    results[steps[idx][1]] = str(out)
     return {"results": results}
 
 def solver_node(state: ReWOO):
