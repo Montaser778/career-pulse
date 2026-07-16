@@ -12,8 +12,10 @@ from langgraph.graph import StateGraph, END
 
 # --- Page Setup ---
 st.set_page_config(page_title="CareerPulse AI", layout="centered")
-st.markdown("<p style='text-align: center; color: gray;'>Developed by Montaser</p>", unsafe_allow_html=True)
-st.markdown("<h1 style='text-align: center;'>🚀 CareerPulse AI</h1>", unsafe_allow_html=True)
+
+# Developed by Eng. Montaser Header
+st.markdown("<p style='text-align: center; color: #7f8c8d; font-family: sans-serif;'>Developed by Eng. Montaser</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #2c3e50;'>🚀 CareerPulse AI</h1>", unsafe_allow_html=True)
 
 # --- Groq & Config ---
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
@@ -23,24 +25,26 @@ llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=api_key)
 @tool
 def job_posting_tool(job_link: str) -> str:
     """Extracts structured information from a job posting at the provided URL."""
-    # Logic from your notebook
-    r = requests.get(job_link, headers={'User-Agent': 'Mozilla/5.0'})
-    return r.text[:5000]
+    try:
+        r = requests.get(job_link, headers={'User-Agent': 'Mozilla/5.0'})
+        return r.text[:5000]
+    except: return "Job posting unavailable."
 
 @tool
 def extract_cv_text(file_path: str) -> str:
     """Extracts text content from CV (PDF/DOCX)."""
-    # Logic from your notebook[cite: 2]
     ext = os.path.splitext(file_path)[-1].lower()
-    if ".docx" in ext:
-        doc = docx.Document(file_path)
-        return '\n'.join([para.text for para in doc.paragraphs])
-    elif ".pdf" in ext:
-        with pdfplumber.open(file_path) as pdf:
-            return '\n'.join([page.extract_text() for page in pdf.pages])
+    try:
+        if ".docx" in ext:
+            doc = docx.Document(file_path)
+            return '\n'.join([para.text for para in doc.paragraphs])
+        elif ".pdf" in ext:
+            with pdfplumber.open(file_path) as pdf:
+                return '\n'.join([page.extract_text() for page in pdf.pages])
+    except Exception as e: return f"Error: {e}"
     return "Unsupported format."
 
-# --- ReWOO Graph Logic (Exact logic from your Notebook) ---
+# --- ReWOO Graph Logic ---
 class ReWOO(TypedDict):
     task: str
     plan_string: str
@@ -49,28 +53,27 @@ class ReWOO(TypedDict):
     result: str
 
 def planner_node(state: ReWOO):
-    # Logic from your notebook[cite: 2]
-    planner_prompt = """For the following task, make plans step by step... (Use your exact prompt from notebook)"""
+    # Ensure this matches your notebook prompt exactly
+    planner_prompt = "Plan: Explain steps and assign tool (CV or JobPost) #E1 = TOOL[input]\nTask: {task}"
     raw_plan = llm.invoke(planner_prompt.format(task=state["task"])).content
     steps = re.findall(r"Plan:\s*(.+?)\s*(#E\d+)\s*=\s*(\w+)\[(.+?)\]", raw_plan, flags=re.S)
     return {"plan_string": raw_plan, "steps": steps}
 
 def executor_node(state: ReWOO):
-    # Logic from your notebook[cite: 2]
     idx = len(state.get("results", {}))
     if idx >= len(state["steps"]): return {}
     _, _, tool_name, tool_input = state["steps"][idx]
+    inp = tool_input.strip("'\"")
     
-    if tool_name == "CV": out = extract_cv_text.invoke(tool_input)
-    elif tool_name == "JobPost": out = job_posting_tool.invoke(tool_input)
-    else: out = llm.invoke(tool_input).content
+    if tool_name == "CV": out = extract_cv_text.invoke(inp)
+    elif tool_name == "JobPost": out = job_posting_tool.invoke(inp)
+    else: out = llm.invoke(inp).content
     
     results = dict(state.get("results", {}))
     results[state["steps"][idx][1]] = str(out)
     return {"results": results}
 
 def solver_node(state: ReWOO):
-    # Logic from your notebook[cite: 2]
     lines = [f"Plan: {s[0]}\nEvidence {s[1]}: {state['results'].get(s[1])}" for s in state["steps"]]
     prompt = f"Solve task: {state['task']}\nEvidence:\n{'\n'.join(lines)}"
     return {"result": llm.invoke(prompt).content}
@@ -100,3 +103,5 @@ if st.button("Analyze"):
                 if "solve" in event:
                     st.success("Analysis Result:")
                     st.write(event["solve"]["result"])
+    else:
+        st.warning("Please fill in all fields.")
